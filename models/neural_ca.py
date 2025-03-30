@@ -102,7 +102,8 @@ class CAModel(nn.Module):
             # Update
             x = self.update(x)
             # Constrain visible channel to [0, 1]
-            x[:, 0:1, :, :] = torch.clamp(x[:, 0:1, :, :], 0.0, 1.0)
+            clamped_channel = torch.clamp(x[:, 0:1, :, :], 0.0, 1.0)
+            x = torch.cat([clamped_channel, x[:, 1:]], dim=1)
             
             # Apply alive_mask: when a cell dies, it cannot be revived
             # and its values are reset to 0

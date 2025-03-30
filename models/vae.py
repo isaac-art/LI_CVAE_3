@@ -93,6 +93,54 @@ class VAE(nn.Module):
             z[i] = z1 * (1 - alpha) + z2 * alpha
         return self.decode(z)
     
+    def slerp(self, z1, z2, steps=10):
+        """Spherical linear interpolation between two latent vectors.
+        
+        Args:
+            z1: First latent vector
+            z2: Second latent vector
+            steps: Number of interpolation steps
+            
+        Returns:
+            Decoded images from the interpolated latent vectors
+        """
+        # Normalize the vectors to unit sphere
+        z1_norm = z1 / torch.norm(z1, dim=-1, keepdim=True)
+        z2_norm = z2 / torch.norm(z2, dim=-1, keepdim=True)
+        
+        # Compute the cosine of the angle between the vectors
+        cos_omega = torch.sum(z1_norm * z2_norm, dim=-1, keepdim=True).clamp(-1, 1)
+        omega = torch.acos(cos_omega)
+        sin_omega = torch.sin(omega)
+        
+        # Initialize result tensor
+        z = torch.zeros(steps, self.latent_dim, device=z1.device)
+        
+        # Handle special case when vectors are very close or opposite
+        if sin_omega.item() < 1e-6:
+            # Linear interpolation if vectors are very close or opposite
+            for i in range(steps):
+                alpha = i / (steps - 1)
+                z[i] = z1 * (1 - alpha) + z2 * alpha
+        else:
+            # Actual SLERP
+            for i in range(steps):
+                alpha = i / (steps - 1)
+                s1 = torch.sin((1 - alpha) * omega) / sin_omega
+                s2 = torch.sin(alpha * omega) / sin_omega
+                z[i] = z1 * s1 + z2 * s2
+                
+        # Preserve the original magnitudes with spherical interpolation directions
+        z1_mag = torch.norm(z1, dim=-1, keepdim=True)
+        z2_mag = torch.norm(z2, dim=-1, keepdim=True)
+        
+        for i in range(steps):
+            alpha = i / (steps - 1)
+            mag = z1_mag * (1 - alpha) + z2_mag * alpha
+            z[i] = z[i] * mag / torch.norm(z[i], dim=-1, keepdim=True)
+                
+        return self.decode(z)
+    
     def forward(self, x):
         """Forward pass."""
         mu, logvar = self.encode(x)
