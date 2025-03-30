@@ -1,0 +1,582 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Neural Cellular Automata Visualization</title>
+    <style>
+        body {
+            font-family: 'Arial', sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f8f9fa;
+            color: #333;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        
+        h1 {
+            color: #2c3e50;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        
+        .container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 20px;
+        }
+        
+        .canvas-container {
+            position: relative;
+            border: 1px solid #ddd;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+            background-color: white;
+            margin-bottom: 20px;
+        }
+        
+        canvas {
+            display: block;
+        }
+        
+        .controls {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 15px;
+            margin-bottom: 20px;
+            background-color: white;
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            width: 100%;
+            max-width: 600px;
+        }
+        
+        button {
+            padding: 8px 16px;
+            background-color: #3498db;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: background-color 0.2s;
+        }
+        
+        button:hover {
+            background-color: #2980b9;
+        }
+        
+        button:disabled {
+            background-color: #bdc3c7;
+            cursor: not-allowed;
+        }
+        
+        .info {
+            background-color: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+            max-width: 600px;
+            width: 100%;
+        }
+        
+        .info h2 {
+            color: #2c3e50;
+            margin-top: 0;
+        }
+        
+        .info p {
+            line-height: 1.6;
+        }
+        
+        .slider-container {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin: 10px 0;
+        }
+        
+        .slider-container label {
+            width: 140px;
+            text-align: right;
+        }
+        
+        .slider-container input {
+            flex: 1;
+        }
+        
+        .model-selector {
+            margin-bottom: 15px;
+            padding: 10px;
+            border-radius: 4px;
+            border: 1px solid #ddd;
+            width: 100%;
+            max-width: 300px;
+        }
+        
+        .info a {
+            color: #3498db;
+            text-decoration: none;
+        }
+        
+        .info a:hover {
+            text-decoration: underline;
+        }
+        
+        .overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            pointer-events: none;
+            z-index: 10;
+        }
+        
+        .mode-buttons {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 10px;
+        }
+        
+        .mode-button {
+            background-color: #ecf0f1;
+            color: #2c3e50;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        
+        .mode-button.active {
+            background-color: #3498db;
+            color: white;
+        }
+    </style>
+</head>
+<body>
+    <h1>Neural Cellular Automata Visualization</h1>
+    
+    <div class="container">
+        <div class="mode-buttons">
+            <div class="mode-button active" id="growingMode">Growing</div>
+            <div class="mode-button" id="persistentMode">Persistent</div>
+            <div class="mode-button" id="regeneratingMode">Regenerating</div>
+        </div>
+        
+        <div class="canvas-container">
+            <canvas id="caCanvas" width="512" height="512"></canvas>
+            <canvas id="overlayCanvas" width="512" height="512" class="overlay"></canvas>
+        </div>
+        
+        <div class="controls">
+            <button id="playPauseBtn">Pause</button>
+            <button id="resetBtn">Reset</button>
+            <button id="clearBtn">Clear</button>
+            <button id="damageBtn">Damage</button>
+            <button id="singleStepBtn">Single Step</button>
+            
+            <div class="slider-container">
+                <label for="speedSlider">Speed:</label>
+                <input type="range" id="speedSlider" min="1" max="30" value="10">
+                <span id="speedValue">10 steps/s</span>
+            </div>
+        </div>
+        
+        <div class="info">
+            <h2>About Neural Cellular Automata</h2>
+            <p>
+                This is a visualization of Neural Cellular Automata (NCA), a differentiable model of morphogenesis inspired by biological systems. The model uses a neural network to learn local update rules that allow cells to self-organize into complex patterns.
+            </p>
+            <p>
+                <strong>Controls:</strong>
+            </p>
+            <ul>
+                <li><strong>Play/Pause:</strong> Start or stop the simulation</li>
+                <li><strong>Reset:</strong> Reset to a single seed cell</li>
+                <li><strong>Clear:</strong> Clear the entire grid</li>
+                <li><strong>Damage:</strong> Erase a portion of the pattern to test regeneration</li>
+                <li><strong>Speed:</strong> Adjust simulation speed</li>
+                <li><strong>Click/tap:</strong> Erase part of the pattern</li>
+                <li><strong>Double-click:</strong> Place new seed cell</li>
+            </ul>
+            <p>
+                <strong>Modes:</strong>
+            </p>
+            <ul>
+                <li><strong>Growing:</strong> Models trained to generate patterns from a seed</li>
+                <li><strong>Persistent:</strong> Models trained to maintain stable patterns</li>
+                <li><strong>Regenerating:</strong> Models trained to repair damaged patterns</li>
+            </ul>
+            <p>
+                Based on the paper <a href="https://distill.pub/2020/growing-ca/" target="_blank">Growing Neural Cellular Automata</a> from Distill.pub
+            </p>
+        </div>
+    </div>
+
+    <script>
+        // Canvas setup
+        const canvas = document.getElementById('caCanvas');
+        const ctx = canvas.getContext('2d');
+        const overlayCanvas = document.getElementById('overlayCanvas');
+        const overlayCtx = overlayCanvas.getContext('2d');
+        
+        // UI elements
+        const playPauseBtn = document.getElementById('playPauseBtn');
+        const resetBtn = document.getElementById('resetBtn');
+        const clearBtn = document.getElementById('clearBtn');
+        const damageBtn = document.getElementById('damageBtn');
+        const singleStepBtn = document.getElementById('singleStepBtn');
+        const speedSlider = document.getElementById('speedSlider');
+        const speedValue = document.getElementById('speedValue');
+        const growingModeBtn = document.getElementById('growingMode');
+        const persistentModeBtn = document.getElementById('persistentMode');
+        const regeneratingModeBtn = document.getElementById('regeneratingMode');
+        
+        // Simulation parameters
+        const gridSize = 128;
+        const cellSize = canvas.width / gridSize;
+        let stepsPerSecond = parseInt(speedSlider.value);
+        let isRunning = true;
+        let isMouseDown = false;
+        let brushSize = 10;
+        let simulationMode = 'growing';
+        
+        // State variables
+        let currentState = null;
+        let animationFrame = null;
+        let lastTimestamp = 0;
+        let stepInterval = 1000 / stepsPerSecond;
+        
+        // Mock CA implementation for the demo
+        // In a real implementation, this would be trained neural CA model
+        class DemoCA {
+            constructor(size = 128) {
+                this.size = size;
+                this.reset();
+            }
+            
+            reset() {
+                // Initialize with a single cell in the center
+                this.state = new Array(this.size).fill(0).map(() => 
+                    new Array(this.size).fill(0));
+                
+                // Place seed in the center
+                const center = Math.floor(this.size / 2);
+                this.state[center][center] = 1;
+            }
+            
+            clear() {
+                this.state = new Array(this.size).fill(0).map(() => 
+                    new Array(this.size).fill(0));
+            }
+            
+            getSeedPattern() {
+                return simulationMode === 'growing' ? 'circle' : 'line';
+            }
+            
+            // Example update rule for demonstration
+            update() {
+                const newState = new Array(this.size).fill(0).map(() => 
+                    new Array(this.size).fill(0));
+                
+                for (let y = 0; y < this.size; y++) {
+                    for (let x = 0; x < this.size; x++) {
+                        // Count living neighbors
+                        let liveNeighbors = 0;
+                        let sum = 0;
+                        
+                        for (let dy = -1; dy <= 1; dy++) {
+                            for (let dx = -1; dx <= 1; dx++) {
+                                const nx = (x + dx + this.size) % this.size;
+                                const ny = (y + dy + this.size) % this.size;
+                                
+                                if (this.state[ny][nx] > 0) {
+                                    liveNeighbors++;
+                                    sum += this.state[ny][nx];
+                                }
+                            }
+                        }
+                        
+                        // Simple rule for demo
+                        if (simulationMode === 'growing') {
+                            // Growing mode
+                            if (this.state[y][x] > 0) {
+                                newState[y][x] = Math.min(1, this.state[y][x] + 0.1);
+                            } else if (liveNeighbors === 3) {
+                                newState[y][x] = 0.3;
+                            } else if (liveNeighbors > 0 && Math.random() < 0.02 * liveNeighbors) {
+                                newState[y][x] = 0.2;
+                            }
+                        } else if (simulationMode === 'persistent') {
+                            // Persistent mode
+                            if (this.state[y][x] > 0) {
+                                newState[y][x] = 1.0;
+                            } else if (liveNeighbors >= 3 && liveNeighbors <= 5) {
+                                newState[y][x] = 0.8;
+                            }
+                        } else if (simulationMode === 'regenerating') {
+                            // Regenerating mode
+                            if (this.state[y][x] > 0) {
+                                newState[y][x] = 1.0;
+                            } else if (liveNeighbors >= 2 && liveNeighbors <= 5) {
+                                newState[y][x] = 0.7;
+                            } else if (liveNeighbors > 5 && Math.random() < 0.7) {
+                                newState[y][x] = 0.5;
+                            }
+                        }
+                    }
+                }
+                
+                this.state = newState;
+            }
+            
+            damage(centerX, centerY, radius) {
+                for (let y = 0; y < this.size; y++) {
+                    for (let x = 0; x < this.size; x++) {
+                        const dx = x - centerX;
+                        const dy = y - centerY;
+                        const distance = Math.sqrt(dx * dx + dy * dy);
+                        
+                        if (distance < radius) {
+                            this.state[y][x] = 0;
+                        }
+                    }
+                }
+            }
+            
+            addSeed(x, y) {
+                const radius = 3;
+                for (let dy = -radius; dy <= radius; dy++) {
+                    for (let dx = -radius; dx <= radius; dx++) {
+                        const nx = (x + dx + this.size) % this.size;
+                        const ny = (y + dy + this.size) % this.size;
+                        const distance = Math.sqrt(dx * dx + dy * dy);
+                        
+                        if (distance < radius) {
+                            this.state[ny][nx] = 1;
+                        }
+                    }
+                }
+            }
+            
+            render(ctx, canvas) {
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                
+                const cellWidth = canvas.width / this.size;
+                const cellHeight = canvas.height / this.size;
+                
+                for (let y = 0; y < this.size; y++) {
+                    for (let x = 0; x < this.size; x++) {
+                        const value = this.state[y][x];
+                        if (value > 0) {
+                            // Use grayscale for our application
+                            ctx.fillStyle = `rgba(${255 - 255 * value}, ${255 - 255 * value}, ${255 - 255 * value}, 1)`;
+                            ctx.fillRect(x * cellWidth, y * cellHeight, cellWidth, cellHeight);
+                        }
+                    }
+                }
+            }
+        }
+        
+        // Initialize the CA
+        let ca = new DemoCA(gridSize);
+        
+        // Render the initial state
+        renderCA();
+        
+        // Animation loop
+        function animate(timestamp) {
+            if (!lastTimestamp) lastTimestamp = timestamp;
+            const elapsed = timestamp - lastTimestamp;
+            
+            if (elapsed > stepInterval) {
+                lastTimestamp = timestamp;
+                
+                if (isRunning) {
+                    ca.update();
+                    renderCA();
+                }
+            }
+            
+            animationFrame = requestAnimationFrame(animate);
+        }
+        
+        // Start animation
+        animationFrame = requestAnimationFrame(animate);
+        
+        // Render function
+        function renderCA() {
+            ca.render(ctx, canvas);
+        }
+        
+        // Event handlers
+        playPauseBtn.addEventListener('click', () => {
+            isRunning = !isRunning;
+            playPauseBtn.textContent = isRunning ? 'Pause' : 'Play';
+        });
+        
+        resetBtn.addEventListener('click', () => {
+            ca.reset();
+            renderCA();
+        });
+        
+        clearBtn.addEventListener('click', () => {
+            ca.clear();
+            renderCA();
+        });
+        
+        damageBtn.addEventListener('click', () => {
+            const centerX = Math.floor(gridSize / 2);
+            const centerY = Math.floor(gridSize / 2);
+            ca.damage(centerX, centerY, 20);
+            renderCA();
+        });
+        
+        singleStepBtn.addEventListener('click', () => {
+            ca.update();
+            renderCA();
+        });
+        
+        speedSlider.addEventListener('input', () => {
+            stepsPerSecond = parseInt(speedSlider.value);
+            stepInterval = 1000 / stepsPerSecond;
+            speedValue.textContent = `${stepsPerSecond} steps/s`;
+        });
+        
+        // Canvas interaction
+        function canvasToGrid(x, y) {
+            const gridX = Math.floor(x / cellSize);
+            const gridY = Math.floor(y / cellSize);
+            return { gridX, gridY };
+        }
+        
+        overlayCanvas.addEventListener('mousedown', (e) => {
+            isMouseDown = true;
+            const rect = overlayCanvas.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const y = e.clientY - rect.top;
+            const { gridX, gridY } = canvasToGrid(x, y);
+            ca.damage(gridX, gridY, brushSize);
+            renderCA();
+        });
+        
+        overlayCanvas.addEventListener('mousemove', (e) => {
+            if (isMouseDown) {
+                const rect = overlayCanvas.getBoundingClientRect();
+                const x = e.clientX - rect.left;
+                const y = e.clientY - rect.top;
+                const { gridX, gridY } = canvasToGrid(x, y);
+                ca.damage(gridX, gridY, brushSize);
+                renderCA();
+            }
+            
+            // Draw cursor overlay
+            const rect = overlayCanvas.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const y = e.clientY - rect.top;
+            drawCursorOverlay(x, y);
+        });
+        
+        overlayCanvas.addEventListener('mouseup', () => {
+            isMouseDown = false;
+        });
+        
+        overlayCanvas.addEventListener('mouseleave', () => {
+            isMouseDown = false;
+            overlayCtx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
+        });
+        
+        overlayCanvas.addEventListener('dblclick', (e) => {
+            const rect = overlayCanvas.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const y = e.clientY - rect.top;
+            const { gridX, gridY } = canvasToGrid(x, y);
+            ca.addSeed(gridX, gridY);
+            renderCA();
+        });
+        
+        function drawCursorOverlay(x, y) {
+            overlayCtx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
+            overlayCtx.beginPath();
+            overlayCtx.arc(x, y, brushSize * cellSize, 0, Math.PI * 2);
+            overlayCtx.strokeStyle = 'rgba(255, 0, 0, 0.5)';
+            overlayCtx.stroke();
+        }
+        
+        // Mode selection
+        growingModeBtn.addEventListener('click', () => {
+            setMode('growing');
+        });
+        
+        persistentModeBtn.addEventListener('click', () => {
+            setMode('persistent');
+        });
+        
+        regeneratingModeBtn.addEventListener('click', () => {
+            setMode('regenerating');
+        });
+        
+        function setMode(mode) {
+            simulationMode = mode;
+            
+            // Update UI
+            growingModeBtn.classList.toggle('active', mode === 'growing');
+            persistentModeBtn.classList.toggle('active', mode === 'persistent');
+            regeneratingModeBtn.classList.toggle('active', mode === 'regenerating');
+            
+            // Reset CA
+            ca.reset();
+            renderCA();
+        }
+        
+        // Mobile support
+        overlayCanvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            isMouseDown = true;
+            const rect = overlayCanvas.getBoundingClientRect();
+            const touch = e.touches[0];
+            const x = touch.clientX - rect.left;
+            const y = touch.clientY - rect.top;
+            const { gridX, gridY } = canvasToGrid(x, y);
+            ca.damage(gridX, gridY, brushSize);
+            renderCA();
+            
+            // For double-tap detection
+            const now = new Date().getTime();
+            const timeSince = now - lastTap;
+            if (timeSince < 300 && timeSince > 0) {
+                // Double tap
+                ca.addSeed(gridX, gridY);
+                renderCA();
+            }
+            lastTap = now;
+        });
+        
+        overlayCanvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            if (isMouseDown) {
+                const rect = overlayCanvas.getBoundingClientRect();
+                const touch = e.touches[0];
+                const x = touch.clientX - rect.left;
+                const y = touch.clientY - rect.top;
+                const { gridX, gridY } = canvasToGrid(x, y);
+                ca.damage(gridX, gridY, brushSize);
+                renderCA();
+                
+                // Draw cursor overlay
+                drawCursorOverlay(x, y);
+            }
+        });
+        
+        overlayCanvas.addEventListener('touchend', () => {
+            isMouseDown = false;
+            overlayCtx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
+        });
+        
+        // For double-tap detection
+        let lastTap = 0;
+    </script>
+</body>
+</html> 
