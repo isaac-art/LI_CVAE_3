@@ -15,6 +15,9 @@ from io import BytesIO
 from PIL import Image
 import random
 import sys
+import threading
+import time
+import atexit
 sys.path.append('.')
 
 from models.vae import VAE
@@ -29,6 +32,11 @@ current_z = None
 target_z = None
 last_image_b64 = None
 step_size = 0.05  # How much to move toward target in each step
+request_counter = 0  # Counter for tracking requests
+request_threshold = 100  # Change target every N requests
+walker_thread = None  # Background thread for continuous walking
+thread_running = False  # Flag to control the walker thread
+image_lock = threading.Lock()  # Lock for thread-safe image access
 
 # Create FastAPI app
 app = FastAPI(title="SLERP Latent Space Walker")
@@ -44,6 +52,23 @@ app.add_middleware(
 
 # Mount static files directory
 app.mount("/static", StaticFiles(directory="web/slerp_walker/static"), name="static")
+
+# Function to stop the walker thread on shutdown
+def stop_walker_thread():
+    global thread_running, walker_thread
+    if thread_running and walker_thread and walker_thread.is_alive():
+        print("Stopping walker thread...")
+        thread_running = False
+        walker_thread.join(timeout=2.0)
+        print("Walker thread stopped.")
+
+# Register shutdown handlers
+@app.on_event("shutdown")
+async def shutdown_event():
+    stop_walker_thread()
+
+# Register with atexit to ensure cleanup on abnormal termination
+atexit.register(stop_walker_thread)
 
 class InitModelRequest(BaseModel):
     """Request model for initializing the VAE model."""
@@ -124,10 +149,71 @@ def slerp_step(z1, z2, step_size):
     
     return interp_z
 
-def is_close_enough(z1, z2, threshold=0.51):
-    """Check if z1 is close enough to z2."""
-    distance = torch.norm(z1 - z2)
-    return distance < threshold
+def get_new_target():
+    """Get a new random target, either from dataset or random latent space."""
+    if random.random() < 0.7 and 'data_loader' in globals() and data_loader is not None:
+        # Use dataset image as target most of the time if available
+        return get_random_dataset_latent()
+    else:
+        # Sometimes use random latent for diversity
+        return torch.randn(1, latent_dim).to(device) * 2.0
+
+def continuous_walker():
+    """Background thread that continuously walks through latent space."""
+    global current_z, target_z, last_image_b64, request_counter, thread_running
+    
+    local_counter = 0  # Local counter for this thread
+    
+    print("Starting continuous walker thread")
+    
+    while thread_running:
+        try:
+            # Increment local counter
+            local_counter += 1
+            
+            # Check if we should change target
+            if local_counter >= request_threshold:
+                # Reset counter and get new target
+                local_counter = 0
+                new_target = get_new_target()
+                
+                # Update global target under lock
+                with image_lock:
+                    target_z = new_target
+                    # Also update global counter to keep them in sync
+                    request_counter = 0
+                
+                print(f"Walker thread: New target generated")
+            
+            # Take a step toward the target using SLERP
+            with image_lock:
+                # Get current copy of vectors under lock
+                current_z_copy = current_z.clone()
+                target_z_copy = target_z.clone()
+            
+            # Compute new position (outside lock for better concurrency)
+            new_position = slerp_step(current_z_copy, target_z_copy, step_size)
+            
+            # Generate the image at the new position
+            with torch.no_grad():
+                decoded_image = model.decode(new_position)
+            
+            # Convert to base64
+            new_image_b64 = tensor_to_b64(decoded_image)
+            
+            # Update global state under lock
+            with image_lock:
+                current_z = new_position
+                last_image_b64 = new_image_b64
+                request_counter = local_counter
+        
+        except Exception as e:
+            print(f"Error in walker thread: {e}")
+        
+        # Sleep to control frame rate
+        time.sleep(0.02)  # 50 FPS target
+
+    print("Walker thread stopped")
 
 @app.get("/", response_class=HTMLResponse)
 async def index():
@@ -143,7 +229,7 @@ async def index():
 @app.post("/init_model")
 async def init_model(request: Optional[InitModelRequest] = Body(default=None)):
     """Initialize or reset the model and latent vectors."""
-    global current_z, target_z, last_image_b64
+    global current_z, target_z, last_image_b64, request_counter, thread_running, walker_thread
     
     # Default values if request is None
     if request is None:
@@ -153,33 +239,42 @@ async def init_model(request: Optional[InitModelRequest] = Body(default=None)):
     seed = request.seed if request.seed is not None else random.randint(0, 10000)
     torch.manual_seed(seed)
     
-    # Initialize from dataset or randomly
-    if request.use_data_image and 'data_loader' in globals() and data_loader is not None:
-        try:
-            # Get a random image from dataset
-            current_z = get_random_dataset_latent()
-        except Exception as e:
-            print(f"Error initializing with data image: {e}")
-            # Fall back to random
+    # Stop existing walker thread if running
+    if thread_running and walker_thread and walker_thread.is_alive():
+        thread_running = False
+        walker_thread.join(timeout=2.0)
+    
+    with image_lock:
+        # Reset request counter
+        request_counter = 0
+        
+        # Initialize from dataset or randomly
+        if request.use_data_image and 'data_loader' in globals() and data_loader is not None:
+            try:
+                # Get a random image from dataset
+                current_z = get_random_dataset_latent()
+            except Exception as e:
+                print(f"Error initializing with data image: {e}")
+                # Fall back to random
+                current_z = torch.randn(1, latent_dim).to(device)
+        else:
+            # Random initialization
             current_z = torch.randn(1, latent_dim).to(device)
-    else:
-        # Random initialization
-        current_z = torch.randn(1, latent_dim).to(device)
+        
+        # Set a random target
+        target_z = get_new_target()
+        
+        # Generate initial image
+        with torch.no_grad():
+            decoded_image = model.decode(current_z)
+        
+        # Convert to base64
+        last_image_b64 = tensor_to_b64(decoded_image)
     
-    # Set a random target
-    if random.random() < 0.5 and 'data_loader' in globals() and data_loader is not None:
-        # Use dataset image as target half the time
-        target_z = get_random_dataset_latent()
-    else:
-        # Use random target
-        target_z = torch.randn(1, latent_dim).to(device) * 2.0
-    
-    # Generate initial image
-    with torch.no_grad():
-        decoded_image = model.decode(current_z)
-    
-    # Convert to base64
-    last_image_b64 = tensor_to_b64(decoded_image)
+    # Start the continuous walker thread
+    thread_running = True
+    walker_thread = threading.Thread(target=continuous_walker, daemon=True)
+    walker_thread.start()
     
     return {
         'status': 'success',
@@ -190,45 +285,34 @@ async def init_model(request: Optional[InitModelRequest] = Body(default=None)):
 
 @app.get("/get_current_image")
 async def get_current_image():
-    """Get the current image and take a SLERP step."""
-    global current_z, target_z, last_image_b64
+    """Get the current pre-computed image."""
+    global last_image_b64
     
-    if current_z is None or target_z is None:
+    with image_lock:
+        if last_image_b64 is None:
+            return {
+                'status': 'error',
+                'message': 'Model not initialized'
+            }
+        
+        # Just return the latest pre-computed image
         return {
-            'status': 'error',
-            'message': 'Model not initialized'
+            'status': 'success',
+            'image': last_image_b64
         }
-    
-    # Check if we've reached the target
-    if is_close_enough(current_z, target_z):
-        target_z = get_random_dataset_latent()
-    
-    # Take a step toward the target using SLERP
-    current_z = slerp_step(current_z, target_z, step_size)
-    
-    # Generate the image at the new position
-    with torch.no_grad():
-        decoded_image = model.decode(current_z)
-    
-    # Convert to base64
-    last_image_b64 = tensor_to_b64(decoded_image)
-    
-    return {
-        'status': 'success',
-        'image': last_image_b64
-    }
 
 @app.post("/random_target")
 async def random_target():
     """Generate a new random target latent vector."""
-    global target_z
+    global target_z, request_counter
     
-    if random.random() < 0.7 and 'data_loader' in globals() and data_loader is not None:
-        # Use dataset image as target most of the time
-        target_z = get_random_dataset_latent()
-    else:
-        # Sometimes use random latent for diversity
-        target_z = torch.randn(1, latent_dim).to(device) * 2.0
+    # Get new target
+    new_target = get_new_target()
+    
+    # Update globals under lock
+    with image_lock:
+        target_z = new_target
+        request_counter = 0
     
     return {
         'status': 'success',
@@ -313,7 +397,7 @@ if __name__ == '__main__':
                         help='Host to run the server on')
     parser.add_argument('--port', type=int, default=8080,
                         help='Port to run the server on')
-    parser.add_argument('--debug', action='store_true',
+    parser.add_argument('--debug', action="store_true",
                         help='Run in debug mode')
     parser.add_argument('--device', type=str, default='cuda',
                         help='Device to use (cuda/cpu)')

@@ -7,11 +7,11 @@
     <style>
         :root {
             --primary-color: #5d45e0;
-            --background-color: #f5f5f7;
-            --card-background: white;
-            --text-color: #333;
-            --border-radius: 12px;
-            --box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+            --background-color: #000;
+            --card-background: transparent;
+            --text-color: #eee;
+            --border-radius: 0;
+            --box-shadow: none;
         }
         
         body {
@@ -19,68 +19,28 @@
             background-color: var(--background-color);
             color: var(--text-color);
             margin: 0;
-            padding: 20px;
+            padding: 0;
             display: flex;
             flex-direction: column;
             align-items: center;
+            justify-content: center;
             min-height: 100vh;
-        }
-        
-        .container {
-            max-width: 900px;
-            width: 100%;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-        }
-        
-        header {
-            text-align: center;
-            margin-bottom: 20px;
-            width: 100%;
-        }
-        
-        h1 {
-            color: var(--primary-color);
-            margin-bottom: 5px;
-        }
-        
-        .subtitle {
-            font-size: 1rem;
-            opacity: 0.7;
-            margin-bottom: 20px;
-        }
-        
-        .main-card {
-            background-color: var(--card-background);
-            border-radius: var(--border-radius);
-            box-shadow: var(--box-shadow);
-            padding: 25px;
-            width: 100%;
-            margin-bottom: 20px;
+            overflow: hidden;
         }
         
         .image-container {
-            width: 100%;
+            width: 100vw;
+            height: 100vh;
             display: flex;
             justify-content: center;
             align-items: center;
-            margin-bottom: 20px;
             position: relative;
         }
         
         #vae-image {
-            width: 100%;
-            max-width: 512px;
-            height: auto;
-            border-radius: var(--border-radius);
-            cursor: pointer;
-            transition: transform 0.3s ease;
+            max-width: 100%;
+            max-height: 100%;
             object-fit: contain;
-        }
-        
-        #vae-image:hover {
-            transform: scale(1.02);
         }
         
         .loading-indicator {
@@ -92,7 +52,7 @@
         }
         
         .spinner {
-            border: 4px solid rgba(0, 0, 0, 0.1);
+            border: 4px solid rgba(255, 255, 255, 0.1);
             border-radius: 50%;
             border-top: 4px solid var(--primary-color);
             width: 40px;
@@ -104,120 +64,24 @@
             0% { transform: rotate(0deg); }
             100% { transform: rotate(360deg); }
         }
-        
-        .controls {
-            display: flex;
-            flex-direction: column;
-            width: 100%;
-        }
-        
-        .control-row {
-            display: flex;
-            gap: 10px;
-            margin-bottom: 10px;
-        }
-        
-        button {
-            background-color: var(--primary-color);
-            color: white;
-            border: none;
-            border-radius: var(--border-radius);
-            padding: 10px 15px;
-            font-size: 1rem;
-            cursor: pointer;
-            transition: all 0.2s ease;
-            flex: 1;
-        }
-        
-        button:hover {
-            background-color: #4934c4;
-            transform: translateY(-2px);
-        }
-        
-        button:active {
-            transform: translateY(0);
-        }
-        
-        button:disabled {
-            background-color: #a9a9a9;
-            cursor: not-allowed;
-            transform: none;
-        }
-        
-        .footer {
-            margin-top: 20px;
-            text-align: center;
-            font-size: 0.9rem;
-            opacity: 0.7;
-        }
-        
-        .info-card {
-            background-color: rgba(93, 69, 224, 0.1);
-            border-radius: var(--border-radius);
-            padding: 15px;
-            margin-bottom: 20px;
-            width: 100%;
-        }
-        
-        .info-title {
-            font-weight: bold;
-            margin-bottom: 5px;
-        }
-        
-        @media (max-width: 600px) {
-            .control-row {
-                flex-direction: column;
-            }
-        }
     </style>
 </head>
 <body>
-    <div class="container">
-        <header>
-            <h1>SLERP Latent Space Walker</h1>
-            <p class="subtitle">Interactive visualization of VAE latent space using spherical linear interpolation</p>
-        </header>
-        
-        <div class="info-card">
-            <div class="info-title">How to use:</div>
-            <p>Click on the image to jump to a random position in latent space. The visualization will smoothly walk through latent space using SLERP (Spherical Linear Interpolation).</p>
-        </div>
-        
-        <div class="main-card">
-            <div class="image-container">
-                <img id="vae-image" src="" alt="VAE Generated Image">
-                <div class="loading-indicator">
-                    <div class="spinner"></div>
-                </div>
-            </div>
-            
-            <div class="controls">
-                <div class="control-row">
-                    <button id="init-button">Initialize Model</button>
-                    <button id="dataset-button">Start from Dataset Image</button>
-                </div>
-                <div class="control-row">
-                    <button id="random-button">Jump to Random Position</button>
-                </div>
-            </div>
-        </div>
-        
-        <div class="footer">
-            VAE SLERP Visualizer &copy; 2023
+    <div class="image-container">
+        <img id="vae-image" src="" alt="VAE Generated Image">
+        <div class="loading-indicator">
+            <div class="spinner"></div>
         </div>
     </div>
     
     <script>
         // DOM Elements
         const vaeImage = document.getElementById('vae-image');
-        const initButton = document.getElementById('init-button');
-        const datasetButton = document.getElementById('dataset-button');
-        const randomButton = document.getElementById('random-button');
         const loadingIndicator = document.querySelector('.loading-indicator');
         
         // State
         let updateInterval = null;
-        const UPDATE_RATE = 75; // milliseconds between updates
+        const UPDATE_RATE = 50; // milliseconds between updates
         
         // Helper Functions
         function showLoading() {
@@ -228,35 +92,17 @@
             loadingIndicator.style.display = 'none';
         }
         
-        function disableButtons() {
-            initButton.disabled = true;
-            datasetButton.disabled = true;
-            randomButton.disabled = true;
-        }
-        
-        function enableButtons() {
-            initButton.disabled = false;
-            datasetButton.disabled = false;
-            randomButton.disabled = false;
-        }
-        
         // API Functions
-        async function initModel(useDataImage = false) {
+        async function initModel() {
             showLoading();
-            disableButtons();
             
             try {
-                // Simple payload with just the essential fields
-                const payload = {
-                    use_data_image: useDataImage
-                };
-                
                 const response = await fetch('/init_model', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
                     },
-                    body: JSON.stringify(payload),
+                    body: JSON.stringify({}),
                 });
                 
                 if (!response.ok) {
@@ -270,28 +116,13 @@
                     startImageUpdates();
                 } else {
                     console.error('Error initializing model:', data.message || 'Unknown error');
-                    alert('Error initializing model: ' + (data.message || 'Unknown error'));
                 }
             } catch (error) {
                 console.error('Error:', error);
-                alert('Error initializing model: ' + error.message);
+                // Try again after a short delay
+                setTimeout(initModel, 2000);
             } finally {
                 hideLoading();
-                enableButtons();
-            }
-        }
-        
-        async function randomTarget() {
-            try {
-                await fetch('/random_target', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({}),
-                });
-            } catch (error) {
-                console.error('Error generating random target:', error);
             }
         }
         
@@ -323,15 +154,9 @@
             updateInterval = setInterval(getCurrentImage, UPDATE_RATE);
         }
         
-        // Event Listeners
-        initButton.addEventListener('click', () => initModel(false));
-        datasetButton.addEventListener('click', () => initModel(true));
-        randomButton.addEventListener('click', randomTarget);
-        vaeImage.addEventListener('click', randomTarget);
-        
-        // Initialize the visualization
+        // Initialize the visualization on page load
         window.onload = () => {
-            initModel(false);
+            initModel();
         };
     </script>
 </body>
